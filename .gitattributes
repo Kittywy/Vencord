@@ -1,1 +1,6 @@
 * text=auto eol=lf
+
+# Keep our fork's versions on merge from upstream
+README.md merge=ours
+.github/workflows/release.yml merge=ours
+.github/workflows/test.yml merge=ours
