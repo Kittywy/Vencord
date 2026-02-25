@@ -3,6 +3,8 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
@@ -15,6 +17,11 @@ public class VencordInstaller : Form
     private Label statusLabel;
     private BackgroundWorker worker;
     private bool installed;
+
+    // Files to install — must match embedded resource names
+    static readonly string[] DistFiles = {
+        "patcher.js", "preload.js", "renderer.js", "renderer.css"
+    };
 
     public VencordInstaller()
     {
@@ -120,50 +127,72 @@ public class VencordInstaller : Form
         worker.RunWorkerAsync();
     }
 
+    /// <summary>
+    /// Read a dist file from embedded resources, or fall back to dist/ folder
+    /// next to the exe (for local development / testing).
+    /// </summary>
+    static byte[] GetDistFile(string name)
+    {
+        // Try embedded resource first (resource name = filename with dots
+        // replaced by underscores in the default namespace, but we embed
+        // with /resource:path,name so the manifest name equals the filename).
+        Assembly asm = Assembly.GetExecutingAssembly();
+        using (Stream s = asm.GetManifestResourceStream(name))
+        {
+            if (s != null)
+            {
+                byte[] buf = new byte[s.Length];
+                s.Read(buf, 0, buf.Length);
+                return buf;
+            }
+        }
+
+        // Fallback: look for dist/ folder next to exe
+        string exeDir = AppDomain.CurrentDomain.BaseDirectory;
+        string path = Path.Combine(exeDir, "dist", name);
+        if (File.Exists(path))
+            return File.ReadAllBytes(path);
+
+        return null;
+    }
+
     private void DoInstall(object sender, DoWorkEventArgs e)
     {
         BackgroundWorker w = (BackgroundWorker)sender;
-        string exeDir = AppDomain.CurrentDomain.BaseDirectory;
-        string distSrc = Path.Combine(exeDir, "dist");
 
-        // ── Validate ────────────────────────────────────────────────────
+        // ── Validate all required files are available ───────────────────
         w.ReportProgress(5, "Checking files...");
-        if (!Directory.Exists(distSrc))
+        foreach (string f in DistFiles)
         {
-            e.Result = "ERR:'dist' folder not found next to the installer.";
-            return;
-        }
-        string[] req = new string[] { "patcher.js", "preload.js", "renderer.js", "renderer.css" };
-        foreach (string f in req)
-        {
-            if (!File.Exists(Path.Combine(distSrc, f)))
+            byte[] data = GetDistFile(f);
+            if (data == null || data.Length == 0)
             {
-                e.Result = "ERR:Missing file: dist/" + f;
+                e.Result = "ERR:Missing file: " + f;
                 return;
             }
         }
         w.ReportProgress(10, "All required files present.");
 
-        // ── Copy dist files ─────────────────────────────────────────────
-        w.ReportProgress(15, "Copying Vencord files...");
+        // ── Extract / copy dist files ───────────────────────────────────
+        w.ReportProgress(15, "Installing Vencord files...");
         string appdata = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         string vencordDir = Path.Combine(appdata, "Vencord");
         string distDest = Path.Combine(vencordDir, "dist");
         try
         {
             Directory.CreateDirectory(distDest);
-            string[] files = Directory.GetFiles(distSrc);
-            for (int i = 0; i < files.Length; i++)
+            for (int i = 0; i < DistFiles.Length; i++)
             {
-                string name = Path.GetFileName(files[i]);
-                File.Copy(files[i], Path.Combine(distDest, name), true);
-                int pct = 15 + (35 * (i + 1) / files.Length);
-                w.ReportProgress(pct, "  " + name);
+                string name = DistFiles[i];
+                byte[] data = GetDistFile(name);
+                File.WriteAllBytes(Path.Combine(distDest, name), data);
+                int pct = 15 + (35 * (i + 1) / DistFiles.Length);
+                w.ReportProgress(pct, "  " + name + " (" + (data.Length / 1024) + " KB)");
             }
         }
         catch (Exception ex)
         {
-            e.Result = "ERR:Copy failed: " + ex.Message;
+            e.Result = "ERR:Failed to write files: " + ex.Message;
             return;
         }
         w.ReportProgress(50, "Installed to " + distDest);
@@ -283,7 +312,6 @@ public class VencordInstaller : Form
         actionBtn.Enabled = true;
     }
 
-    // Writes a minimal ASAR archive that require()s the patcher
     static void WriteAsar(string path, string patcherPath)
     {
         string idx = "require(\"" + patcherPath + "\")";

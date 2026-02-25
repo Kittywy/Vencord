@@ -183,18 +183,15 @@ pause
 writeFileSync(join(STAGING, "install.bat"), batContent, "utf-8");
 console.log("  install.bat");
 
-// ── 4. Compile GUI installer ────────────────────────────────────────────────
+// ── 4. Compile self-contained GUI installer ─────────────────────────────────
+//        Dist files are embedded as .NET resources inside the exe.
 
 const csSourcePath = join(__dirname, "installer-gui.cs");
-const csStagingPath = join(STAGING, "VencordInstaller.cs");
 
 if (!existsSync(csSourcePath)) {
     console.error("\n  [ERROR] scripts/installer-gui.cs not found!");
     process.exit(1);
 }
-
-copyFileSync(csSourcePath, csStagingPath);
-console.log("  VencordInstaller.cs");
 
 // Try to compile with csc.exe (.NET Framework 4.0)
 const cscPaths = [
@@ -202,14 +199,19 @@ const cscPaths = [
     join(process.env.WINDIR || "C:\\Windows", "Microsoft.NET", "Framework", "v4.0.30319", "csc.exe"),
 ];
 
+const EMBED_FILES = ["patcher.js", "preload.js", "renderer.js", "renderer.css"];
+
 let compiled = false;
 for (const csc of cscPaths) {
     if (!existsSync(csc)) continue;
 
     const exePath = join(STAGING, "Install Vencord.exe");
 
+    // Build /resource: flags — embed each dist file with its filename as the resource name
+    const resourceArgs = EMBED_FILES.map(f => `/resource:${join(DIST, f)},${f}`);
+
     try {
-        console.log(`\nCompiling with ${csc}...`);
+        console.log(`\nCompiling self-contained installer with ${csc}...`);
         execFileSync(csc, [
             "/nologo",
             "/optimize+",
@@ -217,15 +219,14 @@ for (const csc of cscPaths) {
             "/platform:anycpu",
             "/r:System.Windows.Forms.dll",
             "/r:System.Drawing.dll",
+            ...resourceArgs,
             `/out:${exePath}`,
-            csStagingPath,
+            csSourcePath,
         ], { stdio: "pipe" });
 
-        console.log(`  Install Vencord.exe`);
+        const size = statSync(exePath).size;
+        console.log(`  Install Vencord.exe (${(size / 1024).toFixed(0)} KB)`);
         compiled = true;
-
-        // Remove .cs source from staging
-        rmSync(csStagingPath);
         break;
     } catch (e) {
         console.error(`  Compilation failed: ${e.message}`);
@@ -234,7 +235,7 @@ for (const csc of cscPaths) {
 
 if (!compiled) {
     console.log("\n  [WARN] Could not compile .exe (csc.exe not found).");
-    console.log("  The .bat installer and .cs source are still available.");
+    console.log("  The .bat installer is still available.");
 }
 
 // ── 5. Summary ──────────────────────────────────────────────────────────────
@@ -255,7 +256,5 @@ for (const f of readdirSync(STAGING)) {
 }
 
 console.log("\nTo distribute:");
-console.log("  1. Zip the VencordCustomInstaller folder");
-console.log("  2. Send to your friend");
-console.log("  3. They unzip and run 'Install Vencord.exe' (or install.bat)");
-console.log("  4. Auto-updates will come from: https://github.com/" + VENCORD_REMOTE);
+console.log("  Send 'Install Vencord.exe' to your friend — it's fully self-contained.");
+console.log("  Auto-updates come from: https://github.com/" + VENCORD_REMOTE);

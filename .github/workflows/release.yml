@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - "src/**"
-      - "scripts/build/**"
+      - "scripts/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/release.yml"
@@ -16,7 +16,7 @@ env:
 
 jobs:
   build-and-release:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     permissions:
       contents: write
 
@@ -40,25 +40,42 @@ jobs:
       - name: Build standalone
         run: pnpm build --standalone
 
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+          & $csc /nologo /optimize+ /target:winexe /platform:anycpu `
+            /r:System.Windows.Forms.dll /r:System.Drawing.dll `
+            "/resource:dist\patcher.js,patcher.js" `
+            "/resource:dist\preload.js,preload.js" `
+            "/resource:dist\renderer.js,renderer.js" `
+            "/resource:dist\renderer.css,renderer.css" `
+            "/out:dist\Install Vencord.exe" `
+            scripts\installer-gui.cs
+          if ($LASTEXITCODE -ne 0) { throw "csc.exe failed" }
+
       - name: Get release tag
+        shell: bash
         run: echo "RELEASE_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
       - name: Create or update release
+        shell: bash
         run: |
           # Create the release if it doesn't exist yet
           gh release create devbuild \
             --title "DevBuild $RELEASE_TAG" \
-            --notes "Auto-built Vencord with External Plugins support" \
+            --notes $'## Install\nDownload **Install Vencord.exe** and run it.\n\nThe other files are used by the auto-updater.' \
             --latest 2>/dev/null || true
 
-          # Upload / overwrite the built files
+          # Upload / overwrite assets
           gh release upload devbuild --clobber \
+            "dist/Install Vencord.exe" \
             dist/patcher.js \
             dist/preload.js \
             dist/renderer.js \
             dist/renderer.css
 
-          # Update release title to reflect the current commit
+          # Update release title
           gh release edit devbuild --title "DevBuild $RELEASE_TAG"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
