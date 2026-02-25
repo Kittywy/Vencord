@@ -20,7 +20,7 @@ import { openNotificationLogModal } from "@api/Notifications/notificationLog";
 import { useSettings } from "@api/Settings";
 import { Divider } from "@components/Divider";
 import { FormSwitch } from "@components/FormSwitch";
-import { FolderIcon, GithubIcon, LogIcon, PaintbrushIcon, RestartIcon } from "@components/Icons";
+import { FolderIcon, GithubIcon, LogIcon, PaintbrushIcon, PluginsIcon, RestartIcon } from "@components/Icons";
 import { QuickAction, QuickActionCard } from "@components/settings/QuickAction";
 import { SpecialCard } from "@components/settings/SpecialCard";
 import { SettingsTab, wrapTab } from "@components/settings/tabs/BaseTab";
@@ -50,6 +50,7 @@ type KeysOfType<Object, Type> = {
 
 function Switches() {
     const settings = useSettings(["useQuickCss", "enableReactDevtools", "frameless", "winNativeTitleBar", "transparent", "winCtrlQ", "disableMinSize"]);
+    const pluginLoaderEnabled = useSettings(["plugins.PluginLoader.loadExternalPlugins"]).plugins.PluginLoader.loadExternalPlugins as boolean ?? true;
 
     const Switches = [
         {
@@ -93,35 +94,55 @@ function Switches() {
         restartRequired?: boolean;
     }>;
 
-    return Switches.map(setting => {
-        if (!setting) {
-            return null;
-        }
+    return (
+        <>
+            {Switches.map(setting => {
+                if (!setting) {
+                    return null;
+                }
 
-        const { key, title, description, restartRequired } = setting;
+                const { key, title, description, restartRequired } = setting;
 
-        return (
+                return (
+                    <FormSwitch
+                        key={key}
+                        title={title}
+                        description={description}
+                        value={settings[key]}
+                        onChange={v => {
+                            settings[key] = v;
+
+                            if (restartRequired) {
+                                Alerts.show({
+                                    title: "Restart Required",
+                                    body: "A restart is required to apply this change",
+                                    confirmText: "Restart now",
+                                    cancelText: "Later!",
+                                    onConfirm: relaunch
+                                });
+                            }
+                        }}
+                    />
+                );
+            })}
             <FormSwitch
-                key={key}
-                title={title}
-                description={description}
-                value={settings[key]}
+                key="externalPlugins"
+                title="Enable External Plugins"
+                description="Load .js plugins from the plugins folder"
+                value={pluginLoaderEnabled}
                 onChange={v => {
-                    settings[key] = v;
-
-                    if (restartRequired) {
-                        Alerts.show({
-                            title: "Restart Required",
-                            body: "A restart is required to apply this change",
-                            confirmText: "Restart now",
-                            cancelText: "Later!",
-                            onConfirm: relaunch
-                        });
-                    }
+                    Vencord.Settings.plugins.PluginLoader.loadExternalPlugins = v;
+                    Alerts.show({
+                        title: "Restart Required",
+                        body: "A restart is required to apply this change",
+                        confirmText: "Restart now",
+                        cancelText: "Later!",
+                        onConfirm: relaunch
+                    });
                 }}
             />
-        );
-    });
+        </>
+    );
 }
 
 function VencordSettings() {
@@ -207,6 +228,11 @@ function VencordSettings() {
                         Icon={GithubIcon}
                         text="View Source Code"
                         action={() => VencordNative.native.openExternal("https://github.com/" + gitRemote)}
+                    />
+                    <QuickAction
+                        Icon={PluginsIcon}
+                        text="Open Plugins Folder"
+                        action={() => VencordNative.pluginHelpers.PluginLoader.openPluginsDir()}
                     />
                 </QuickActionCard>
             </section>

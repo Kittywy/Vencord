@@ -1,0 +1,64 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "scripts/build/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+env:
+  FORCE_COLOR: true
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply External Plugins patches
+        run: node src/userplugins/pluginLoader/apply-patches.mjs
+
+      - name: Build standalone
+        run: pnpm build --standalone
+
+      - name: Get release tag
+        run: echo "RELEASE_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Create or update release
+        run: |
+          # Create the release if it doesn't exist yet
+          gh release create devbuild \
+            --title "DevBuild $RELEASE_TAG" \
+            --notes "Auto-built Vencord with External Plugins support" \
+            --latest 2>/dev/null || true
+
+          # Upload / overwrite the built files
+          gh release upload devbuild --clobber \
+            dist/patcher.js \
+            dist/preload.js \
+            dist/renderer.js \
+            dist/renderer.css
+
+          # Update release title to reflect the current commit
+          gh release edit devbuild --title "DevBuild $RELEASE_TAG"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

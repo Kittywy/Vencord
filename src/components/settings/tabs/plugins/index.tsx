@@ -35,6 +35,7 @@ import { Margins } from "@utils/margins";
 import { classes } from "@utils/misc";
 import { useAwaiter, useCleanupEffect } from "@utils/react";
 import { Alerts, Button, lodash, Parser, React, Select, TextInput, Tooltip, useMemo, useState } from "@webpack/common";
+import { showToast, Toasts } from "@webpack/common";
 import { JSX } from "react";
 
 import Plugins, { ExcludedPlugins, PluginMeta } from "~plugins";
@@ -45,7 +46,7 @@ import { UIElementsButton } from "./UIElements";
 export const cl = classNameFactory("vc-plugins-");
 export const logger = new Logger("PluginSettings", "#a6d189");
 
-function ReloadRequiredCard({ required }: { required: boolean; }) {
+function ReloadRequiredCard({ required, onReloadPlugins }: { required: boolean; onReloadPlugins?: () => void; }) {
     return (
         <Card variant={required ? "warning" : "normal"} className={cl("info-card")}>
             {required
@@ -65,6 +66,15 @@ function ReloadRequiredCard({ required }: { required: boolean; }) {
                         <HeadingTertiary>Plugin Management</HeadingTertiary>
                         <Paragraph>Press the cog wheel or info icon to get more info on a plugin</Paragraph>
                         <Paragraph>Plugins with a cog wheel have settings you can modify!</Paragraph>
+                        {onReloadPlugins && (
+                            <Button
+                                size={Button.Sizes.SMALL}
+                                onClick={onReloadPlugins}
+                                className={cl("restart-button")}
+                            >
+                                Reload Local Plugins
+                            </Button>
+                        )}
                     </>
                 )}
         </Card>
@@ -116,6 +126,7 @@ function ExcludedPluginsList({ search }: { search: string; }) {
 function PluginSettings() {
     const settings = useSettings();
     const changes = useMemo(() => new ChangeList<string>(), []);
+    const [reloadCount, forceReload] = React.useReducer((x: number) => x + 1, 0);
 
     useCleanupEffect(() => {
         if (changes.hasChanges)
@@ -154,10 +165,10 @@ function PluginSettings() {
 
     const sortedPlugins = useMemo(() =>
         Object.values(Plugins).sort((a, b) => a.name.localeCompare(b.name)),
-        []
+        [reloadCount]
     );
 
-    const hasUserPlugins = useMemo(() => !IS_STANDALONE && Object.values(PluginMeta).some(m => m.userPlugin), []);
+    const hasUserPlugins = useMemo(() => !IS_STANDALONE && Object.values(PluginMeta).some(m => m.userPlugin), [reloadCount]);
 
     const [searchValue, setSearchValue] = useState({ value: "", status: SearchStatus.ALL });
 
@@ -259,7 +270,22 @@ function PluginSettings() {
 
     return (
         <SettingsTab>
-            <ReloadRequiredCard required={changes.hasChanges} />
+            <ReloadRequiredCard
+                required={changes.hasChanges}
+                onReloadPlugins={"PluginLoader" in Plugins ? async () => {
+                    try {
+                        const loader = (Plugins as Record<string, any>)["PluginLoader"];
+                        if (!loader?.stop || !loader?.start) return;
+                        loader.stop();
+                        await loader.start();
+                        forceReload();
+                        showToast("Local plugins reloaded", Toasts.Type.SUCCESS);
+                    } catch (e) {
+                        showToast("Failed to reload plugins", Toasts.Type.FAILURE);
+                        logger.error("Failed to reload local plugins:", e);
+                    }
+                } : undefined}
+            />
 
             <UIElementsButton />
 
