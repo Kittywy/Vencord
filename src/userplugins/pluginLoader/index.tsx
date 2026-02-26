@@ -79,6 +79,7 @@ export default definePlugin({
                     (PluginMeta as Record<string, any>)[def.name] = {
                         folderName: file.name,
                         userPlugin: true,
+                        externalPlugin: true,
                     };
 
                     // Auto-start if user previously enabled this plugin

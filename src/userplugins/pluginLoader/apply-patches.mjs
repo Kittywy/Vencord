@@ -258,6 +258,56 @@ const PATCH_SETS = [
                     `            />`,
                 ].join("\n"),
             },
+            {
+                name: "Add LOCAL_PLUGINS to SearchStatus enum",
+                find: [
+                    `    USER_PLUGINS,`,
+                    `    API_PLUGINS`,
+                ].join("\n"),
+                replace: [
+                    `    USER_PLUGINS,`,
+                    `    LOCAL_PLUGINS,`,
+                    `    API_PLUGINS`,
+                ].join("\n"),
+            },
+            {
+                name: "Add hasLocalPlugins memo",
+                find: `const hasUserPlugins = useMemo(() => !IS_STANDALONE && Object.values(PluginMeta).some(m => m.userPlugin), [reloadCount]);`,
+                replace: [
+                    `const hasUserPlugins = useMemo(() => !IS_STANDALONE && Object.values(PluginMeta).some(m => m.userPlugin), [reloadCount]);`,
+                    `    const hasLocalPlugins = useMemo(() => Object.values(PluginMeta).some(m => (m as any).externalPlugin), [reloadCount]);`,
+                ].join("\n"),
+            },
+            {
+                name: "Add LOCAL_PLUGINS filter case",
+                find: [
+                    `            case SearchStatus.USER_PLUGINS:`,
+                    `                if (!PluginMeta[plugin.name]?.userPlugin) return false;`,
+                    `                break;`,
+                    `            case SearchStatus.API_PLUGINS:`,
+                ].join("\n"),
+                replace: [
+                    `            case SearchStatus.USER_PLUGINS:`,
+                    `                if (!PluginMeta[plugin.name]?.userPlugin) return false;`,
+                    `                break;`,
+                    `            case SearchStatus.LOCAL_PLUGINS:`,
+                    `                if (!(PluginMeta[plugin.name] as any)?.externalPlugin) return false;`,
+                    `                break;`,
+                    `            case SearchStatus.API_PLUGINS:`,
+                ].join("\n"),
+            },
+            {
+                name: "Add Show Local Plugins dropdown option",
+                find: [
+                    `                                hasUserPlugins && { label: "Show UserPlugins", value: SearchStatus.USER_PLUGINS },`,
+                    `                                { label: "Show API Plugins", value: SearchStatus.API_PLUGINS },`,
+                ].join("\n"),
+                replace: [
+                    `                                hasUserPlugins && { label: "Show UserPlugins", value: SearchStatus.USER_PLUGINS },`,
+                    `                                hasLocalPlugins && { label: "Show Local Plugins", value: SearchStatus.LOCAL_PLUGINS },`,
+                    `                                { label: "Show API Plugins", value: SearchStatus.API_PLUGINS },`,
+                ].join("\n"),
+            },
         ],
     },
 

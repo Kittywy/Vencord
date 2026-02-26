@@ -87,6 +87,7 @@ const enum SearchStatus {
     DISABLED,
     NEW,
     USER_PLUGINS,
+    LOCAL_PLUGINS,
     API_PLUGINS
 }
 
@@ -169,6 +170,7 @@ function PluginSettings() {
     );
 
     const hasUserPlugins = useMemo(() => !IS_STANDALONE && Object.values(PluginMeta).some(m => m.userPlugin), [reloadCount]);
+    const hasLocalPlugins = useMemo(() => Object.values(PluginMeta).some(m => (m as any).externalPlugin), [reloadCount]);
 
     const [searchValue, setSearchValue] = useState({ value: "", status: SearchStatus.ALL });
 
@@ -192,6 +194,9 @@ function PluginSettings() {
                 break;
             case SearchStatus.USER_PLUGINS:
                 if (!PluginMeta[plugin.name]?.userPlugin) return false;
+                break;
+            case SearchStatus.LOCAL_PLUGINS:
+                if (!(PluginMeta[plugin.name] as any)?.externalPlugin) return false;
                 break;
             case SearchStatus.API_PLUGINS:
                 if (!plugin.name.endsWith("API")) return false;
@@ -306,6 +311,7 @@ function PluginSettings() {
                                 { label: "Show Disabled", value: SearchStatus.DISABLED },
                                 { label: "Show New", value: SearchStatus.NEW },
                                 hasUserPlugins && { label: "Show UserPlugins", value: SearchStatus.USER_PLUGINS },
+                                hasLocalPlugins && { label: "Show Local Plugins", value: SearchStatus.LOCAL_PLUGINS },
                                 { label: "Show API Plugins", value: SearchStatus.API_PLUGINS },
                             ].filter(isTruthy)}
                             serialize={String}
